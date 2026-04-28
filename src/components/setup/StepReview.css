@@ -1,0 +1,128 @@
+.step-review {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.review-container {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.review-section {
+  padding: 32px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.review-section:last-of-type {
+  border-bottom: none;
+}
+
+.review-section-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--gl-orange);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 24px;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-lbl {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.review-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.review-val.highlight {
+  color: var(--info);
+}
+
+.review-info-card {
+  margin: 0 32px 32px;
+  padding: 20px;
+  background: rgba(59, 130, 246, 0.06);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.info-icon {
+  font-size: 20px;
+}
+.info-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.info-text strong {
+  color: var(--text-primary);
+}
+
+.step-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.btn-back {
+  background: transparent;
+  border: 1px solid var(--border-accent);
+  color: var(--text-secondary);
+  padding: 14px 24px;
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-back:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.btn-launch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--gradient-brand);
+  border: none;
+  color: white;
+  padding: 14px 32px;
+  border-radius: var(--radius-md);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: var(--transition);
+  box-shadow: 0 8px 24px rgba(255, 90, 31, 0.4);
+}
+
+.btn-launch:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 32px rgba(255, 90, 31, 0.5);
+}

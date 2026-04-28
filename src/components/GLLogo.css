@@ -1,0 +1,38 @@
+.gl-logo-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gl-icon-mark {
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 0 16px rgba(255, 90, 31, 0.35);
+}
+
+.gl-text-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gl-wordmark {
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.1;
+}
+
+.gl-word-global {
+  color: var(--text-primary);
+}
+
+.gl-word-logic {
+  color: var(--gl-orange);
+}
+
+.gl-tagline {
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0.1px;
+}
