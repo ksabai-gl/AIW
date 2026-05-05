@@ -41,9 +41,9 @@ loadBridgeEnvFile();
 
 /** Repository root (parent of cursor-agent-bridge/) */
 const DEFAULT_WORKSPACE = path.resolve(BRIDGE_ROOT, '..');
-const PREFERRED_PORT = Number(process.env.AGENT_BRIDGE_PORT || 3847);
+const PREFERRED_PORT = Number(process.env.PORT || process.env.AGENT_BRIDGE_PORT || 3847);
 let ACTIVE_PORT = PREFERRED_PORT;
-const HOST = process.env.AGENT_BRIDGE_HOST || '127.0.0.1';
+const HOST = process.env.AGENT_BRIDGE_HOST || '0.0.0.0';
 const AGENT_TIMEOUT_MS = Number(process.env.AGENT_TIMEOUT_MS || 0);
 const DEV_API_PORT_FILE = path.join(BRIDGE_ROOT, '.dev-api-port');
 
@@ -1254,6 +1254,7 @@ app.use(
   })
 );
 app.use(express.json({ limit: '4mb' }));
+const FRONTEND_DIST_DIR = path.resolve(BRIDGE_ROOT, '..', 'dist');
 
 app.get('/api/ping', (_req, res) => {
   res.json({ ok: true, service: 'cursor-agent-bridge', apiPort: ACTIVE_PORT });
@@ -2129,6 +2130,14 @@ app.post('/api/mcp/configure', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// In single-service deployments (Render Web Service), serve the built frontend from repo /dist.
+if (existsSync(FRONTEND_DIST_DIR)) {
+  app.use(express.static(FRONTEND_DIST_DIR));
+  app.get(/^\/(?!api\/).*/, (_req, res) => {
+    res.sendFile(path.join(FRONTEND_DIST_DIR, 'index.html'));
+  });
+}
 
 
 function startHttpServerWithFallback(startPort, maxAttempts = 20) {

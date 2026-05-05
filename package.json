@@ -10,6 +10,7 @@
     "dev:all": "npx -y concurrently@9.1.2 -n bridge,web -c blue,cyan \"npm run dev:bridge\" \"vite\"",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "node cursor-agent-bridge/server/index.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
