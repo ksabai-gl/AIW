@@ -1,0 +1,37 @@
+{
+  "_readme": "Values prefixed with $ are resolved from the workspace .env file at runtime. The agent reads GITHUB_OWNER, GITHUB_REPO, GITHUB_BASE_BRANCH from <workspaceRoot>/.env automatically.",
+  "github": {
+    "owner": "${GITHUB_OWNER}",
+    "defaultRepo": "${GITHUB_REPO}",
+    "baseBranch": "${GITHUB_BASE_BRANCH}",
+    "_envKeys": {
+      "owner": "GITHUB_OWNER",
+      "defaultRepo": "GITHUB_REPO",
+      "baseBranch": "GITHUB_BASE_BRANCH"
+    },
+    "alternativeBaseBranches": ["develop", "master"],
+    "branchPrefix": {
+      "feature": "feature/",
+      "fix": "fix/",
+      "refactor": "refactor/",
+      "docs": "docs/",
+      "test": "test/",
+      "chore": "chore/"
+    },
+    "defaultReviewers": [],
+    "defaultLabels": ["needs-review"],
+    "autoMerge": false,
+    "draftByDefault": false
+  },
+  "commit": {
+    "signCommits": false,
+    "conventionalCommits": true,
+    "includeJiraTicket": true
+  },
+  "pr": {
+    "maintainerCanModify": true,
+    "deleteHeadBranch": true,
+    "requireApproval": true,
+    "minApprovals": 1
+  }
+}

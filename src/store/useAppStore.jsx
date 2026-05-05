@@ -5,7 +5,9 @@ import {
   useCallback,
   useEffect,
 } from "react";
-import { WORKFLOW_TEMPLATES } from "../data/options";
+import { WORKFLOW_TEMPLATES, KICKOFF_SOURCE_CONFIG, ALL_AGENTS, PROJECT_FLOW_OPTIONS } from "../data/options";
+import lightTheme from "../colors";
+import darkTheme from "../colorDark";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 export const FLOW_TYPE = {
@@ -13,8 +15,17 @@ export const FLOW_TYPE = {
   WITHOUT_MIGRATION: "without_migration",
 };
 
+export const PROJECT_FLOW = {
+  JIRA_SPEC: "jira_spec",
+  DESIGN_SPEC: "design_spec",
+  CODE_WITH_MIGRATION: "code_with_migration",
+  CODE_WITHOUT_MIGRATION: "code_without_migration",
+  CUSTOM: "custom",
+};
+
 export const SETUP_STEPS = {
   FLOW_SELECTION: "flow_selection",
+  AGENT_SELECTION: "agent_selection",
   LANGUAGE_CONFIG: "language_config",
   IDE_CONFIG: "ide_config",
   REVIEW: "review",
@@ -28,20 +39,65 @@ export const AGENT_STATUS = {
   PENDING: "pending",
 };
 
+/** Derive sidebar / Run All state from agent rows (stored workflowStatus otherwise goes stale after COMPLETE). */
+export function deriveWorkflowStatus(agents) {
+  if (!agents?.length) return "not_started";
+  if (agents.some((a) => a.status === AGENT_STATUS.RUNNING)) return "running";
+  if (agents.every((a) => a.status === AGENT_STATUS.COMPLETED)) return "completed";
+  if (agents.some((a) => a.status === AGENT_STATUS.COMPLETED || a.status === AGENT_STATUS.FAILED)) return "paused";
+  return "not_started";
+}
+
+/** Same sequencing rules as dashboard agent cards / bridge API START_AGENT reducer. */
+function prevAgentMeetsPipelineGate(prev) {
+  if (!prev) return false;
+  if (prev.status !== AGENT_STATUS.COMPLETED) return false;
+  if (prev.shortName === "Jira Spec Creator") {
+    return prev.jiraSpecPublishDone === true;
+  }
+  return true;
+}
+
+export function canStartSequentialAgent(workflowAgents, idx) {
+  const agent = workflowAgents[idx];
+  if (!agent) return false;
+  if (agent.status === AGENT_STATUS.RUNNING) return false;
+  if (idx === 0) return true;
+  if (
+    agent.status === AGENT_STATUS.COMPLETED ||
+    agent.status === AGENT_STATUS.FAILED
+  )
+    return true;
+  const prev = workflowAgents[idx - 1];
+  return prevAgentMeetsPipelineGate(prev);
+}
+
 // ─── Initial State ─────────────────────────────────────────────────────────────
 const initialSetupState = {
   currentStep: SETUP_STEPS.FLOW_SELECTION,
   completedSteps: [],
+  projectName: "",
+  /** Folder passed to `agent --workspace` / Kiro cwd (cursor-agent-bridge). */
+  targetWorkspace: "",
+  /** Base URL for bridge API, e.g. `http://127.0.0.1:3847`. Empty = same origin (use Vite `/api` proxy). */
+  agentBridgeBaseUrl: "",
+  projectFlow: null,
   flowType: null,
   sourceLanguage: null,
   targetLanguage: null,
   selectedTemplateId: null,
+  kickoffSource: "custom_flow",
   sourceFile: null,
+  selectedAgentIds: [], // For custom flow
   ideConfig: {
     platform: null,
     llm: null,
     cloudDeployment: null,
-    mcpServers: [], // Changed from mcpServer to mcpServers
+    mcpServers: [],
+    /** Optional full path to `agent` / `cursor-agent.cmd` or `kiro` when using CLI platforms. */
+    cliExecutablePath: "",
+    /** Kiro: full tools (MCP). Cursor: bridge ignores this and uses default agent mode. */
+    executionMode: "autopilot",
   },
   setupComplete: false,
 };
@@ -55,9 +111,72 @@ const createAgent = (id, config) => ({
   ...config,
 });
 
-const buildAgents = (templateId, fallbackFlowType) => {
+const applyKickoffSourceToPipeline = (pipeline, kickoffSource) => {
+  const kickoffConfig = KICKOFF_SOURCE_CONFIG[kickoffSource];
+  const configuredStart = kickoffConfig?.startFrom;
+
+  if (!configuredStart) return pipeline;
+
+  let startIndex = pipeline.findIndex(
+    (agent) => agent.shortName === configuredStart,
+  );
+  if (startIndex < 0 && kickoffSource === "modernization") {
+    startIndex = pipeline.findIndex((agent) => agent.shortName === "Code Gen");
+  }
+  if (startIndex < 0) return pipeline;
+
+  const trimmedPipeline = pipeline.slice(startIndex);
+  if (!trimmedPipeline.length) return pipeline;
+
+  if (
+    kickoffSource === "spec_file" &&
+    trimmedPipeline[0].shortName === "Design Spec"
+  ) {
+    return [
+      {
+        ...trimmedPipeline[0],
+        name: "Specification Agent",
+        shortName: "Spec Agent",
+        description:
+          "Parses the provided specification document and generates implementation-ready specs.",
+      },
+      ...trimmedPipeline.slice(1),
+    ];
+  }
+
+  return trimmedPipeline;
+};
+
+// Maps each project flow to the exact template + kickoff combo that generates its pipeline
+const PROJECT_FLOW_PIPELINE_MAP = {
+  jira_spec:             { templateId: "modernization_pipeline", kickoffSource: "jira_document" },
+  design_spec:           { templateId: "modernization_pipeline", kickoffSource: "design_file" },
+  code_with_migration:   { templateId: "migration_pipeline",     kickoffSource: "modernization" },
+  code_without_migration:{ templateId: "modernization_pipeline", kickoffSource: "modernization" },
+};
+
+const buildAgents = (setupState) => {
+  const { selectedTemplateId, flowType: fallbackFlowType, kickoffSource, projectFlow, selectedAgentIds } = setupState;
+  
+  // Handle custom flow with manually selected agents
+  if (projectFlow === PROJECT_FLOW.CUSTOM && selectedAgentIds?.length > 0) {
+    const customPipeline = selectedAgentIds.map(agentKey => {
+      const agentBase = ALL_AGENTS.find(a => a.id === agentKey);
+      if (!agentBase) return null;
+      const { id: _key, ...rest } = agentBase;
+      return rest;
+    }).filter(Boolean);
+    return customPipeline.map((agent, idx) =>
+      createAgent(idx + 1, {
+        ...agent,
+        htlpStatus: agent.htlpRequired ? "pending" : undefined,
+      })
+    );
+  }
+
+
   const selectedTemplate = WORKFLOW_TEMPLATES.find(
-    (template) => template.id === templateId,
+    (template) => template.id === selectedTemplateId,
   );
   const requestedFlowType = fallbackFlowType || selectedTemplate?.flowType;
   const resolvedTemplate =
@@ -72,7 +191,7 @@ const buildAgents = (templateId, fallbackFlowType) => {
         name: "Code Analyser Agent",
         shortName: "Code Analyser",
         description:
-          "Analyzes Progress4GL source code and generates detailed analysis report.",
+          "Analyzes source code and generates detailed analysis report.",
         icon: "search",
         color: "#3B82F6",
         htlpRequired: true,
@@ -83,7 +202,7 @@ const buildAgents = (templateId, fallbackFlowType) => {
         name: "Code Migration Agent",
         shortName: "Migration",
         description:
-          "Migrates Progress4GL code to target technology (e.g., Java) and prepares migrated artifacts.",
+          "Migrates code to target technology (e.g., Java) and prepares migrated artifacts.",
         icon: "git-merge",
         color: "#8B5CF6",
         htlpRequired: true,
@@ -110,15 +229,13 @@ const buildAgents = (templateId, fallbackFlowType) => {
         color: "#F59E0B",
       },
       {
-        name: "Jira Spec Agent",
-        shortName: "Jira Spec",
+        name: "Jira Spec Creator Agent",
+        shortName: "Jira Spec Creator",
         description:
-          "Creates/updates Jira items with epics, stories, tasks and links to generated specs.",
+          "Drafts the QAD Jira spec to the workspace, then review and create one issue via MCP (same card).",
         icon: "ticket",
         color: "#22C55E",
-        htlpRequired: true,
-        htlpLabel: "HITLP (Manual Review JIRA Spec)",
-        htlpStatus: "pending",
+        pipelinePauseAfter: true,
       },
       {
         name: "Code Generation Agent",
@@ -187,15 +304,13 @@ const buildAgents = (templateId, fallbackFlowType) => {
         color: "#F59E0B",
       },
       {
-        name: "Jira Spec Agent",
-        shortName: "Jira Spec",
+        name: "Jira Spec Creator Agent",
+        shortName: "Jira Spec Creator",
         description:
-          "Publishes modernization scope, milestones and work items to Jira.",
+          "Drafts the spec locally, then review and create one Jira issue via MCP on the same card.",
         icon: "ticket",
         color: "#22C55E",
-        htlpRequired: true,
-        htlpLabel: "HITLP (Manual Review JIRA Spec)",
-        htlpStatus: "pending",
+        pipelinePauseAfter: true,
       },
       {
         name: "Code Generation Agent",
@@ -264,15 +379,13 @@ const buildAgents = (templateId, fallbackFlowType) => {
         color: "#F59E0B",
       },
       {
-        name: "Jira Spec Agent",
-        shortName: "Jira Spec",
+        name: "Jira Spec Creator Agent",
+        shortName: "Jira Spec Creator",
         description:
-          "Creates delivery backlog, rollout checklist and release readiness items in Jira.",
+          "Drafts backlog/spec to the workspace, then review and publish one Jira issue (same card).",
         icon: "ticket",
         color: "#22C55E",
-        htlpRequired: true,
-        htlpLabel: "HITLP (Backlog Review)",
-        htlpStatus: "pending",
+        pipelinePauseAfter: true,
       },
       {
         name: "Code Generation Agent",
@@ -352,15 +465,13 @@ const buildAgents = (templateId, fallbackFlowType) => {
         color: "#F59E0B",
       },
       {
-        name: "Jira Spec Agent",
-        shortName: "Jira Spec",
+        name: "Jira Spec Creator Agent",
+        shortName: "Jira Spec Creator",
         description:
-          "Creates traceable Jira epics, stories and tasks for re-engineering work.",
+          "Drafts traceable Jira content locally, then review and create the issue on the same card.",
         icon: "ticket",
         color: "#22C55E",
-        htlpRequired: true,
-        htlpLabel: "HITLP (Jira Review)",
-        htlpStatus: "pending",
+        pipelinePauseAfter: true,
       },
       {
         name: "Code Generation Agent",
@@ -429,15 +540,13 @@ const buildAgents = (templateId, fallbackFlowType) => {
         color: "#F59E0B",
       },
       {
-        name: "Jira Spec Agent",
-        shortName: "Jira Spec",
+        name: "Jira Spec Creator Agent",
+        shortName: "Jira Spec Creator",
         description:
-          "Publishes findings, recommendations and action items to Jira backlog.",
+          "Drafts findings into a spec file, then review and create one Jira issue (same card).",
         icon: "ticket",
         color: "#22C55E",
-        htlpRequired: true,
-        htlpLabel: "HITLP (Backlog Review)",
-        htlpStatus: "pending",
+        pipelinePauseAfter: true,
       },
       {
         name: "PR Creation Agent",
@@ -453,6 +562,16 @@ const buildAgents = (templateId, fallbackFlowType) => {
     ],
   };
 
+  // Use per-projectFlow mapping as the authoritative source (keeps setup preview + dashboard in sync)
+  const flowPipelineKey = PROJECT_FLOW_PIPELINE_MAP[projectFlow];
+  if (flowPipelineKey) {
+    const basePipeline = pipelineByTemplate[flowPipelineKey.templateId];
+    if (basePipeline) {
+      const adjusted = applyKickoffSourceToPipeline(basePipeline, flowPipelineKey.kickoffSource);
+      return adjusted.map((agent, idx) => createAgent(idx + 1, agent));
+    }
+  }
+
   const fallbackPipeline = hasMigration
     ? pipelineByTemplate.migration_pipeline
     : pipelineByTemplate.modernization_pipeline;
@@ -461,7 +580,19 @@ const buildAgents = (templateId, fallbackFlowType) => {
     ? pipelineByTemplate[resolvedTemplate.id]
     : fallbackPipeline;
 
-  return selectedPipeline.map((agent, idx) => createAgent(idx + 1, agent));
+  const kickoffPipelineOverride =
+    KICKOFF_SOURCE_CONFIG[kickoffSource]?.pipelineTemplateOverride;
+  const basePipeline = kickoffPipelineOverride
+    ? pipelineByTemplate[kickoffPipelineOverride] || selectedPipeline
+    : selectedPipeline;
+
+  const kickoffAdjustedPipeline = applyKickoffSourceToPipeline(
+    basePipeline,
+    kickoffSource,
+  );
+  return kickoffAdjustedPipeline.map((agent, idx) =>
+    createAgent(idx + 1, agent),
+  );
 };
 
 const initialWorkflowState = {
@@ -475,10 +606,13 @@ const initialWorkflowState = {
 const initialState = {
   setup: initialSetupState,
   workflow: initialWorkflowState,
-  view: "setup", // setup | dashboard | agent_detail
-  dashboardPanel: "workflow", // workflow | config
+  projects: [], // saved project snapshots
+  activeProjectId: null,
+  view: "dashboard", // setup | dashboard | agent_detail
+  dashboardPanel: "workflow", // workflow | config | settings
   dashboardConfigFocus: null, // platform | llm | mcp | null
   selectedAgentId: null,
+  theme: "dark",
 };
 
 // ─── Persistence Helpers ──────────────────────────────────────────────────────
@@ -496,7 +630,23 @@ const loadStateFromStorage = () => {
         parsed.setup &&
         parsed.workflow
       ) {
-        return parsed;
+        return {
+          ...initialState,
+          ...parsed,
+          setup: {
+            ...initialSetupState,
+            ...parsed.setup,
+            ideConfig: {
+              ...initialSetupState.ideConfig,
+              ...(parsed.setup?.ideConfig && typeof parsed.setup.ideConfig === "object"
+                ? parsed.setup.ideConfig
+                : {}),
+            },
+          },
+          workflow: { ...initialWorkflowState, ...parsed.workflow },
+          projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+          activeProjectId: parsed.activeProjectId || null,
+        };
       }
     }
   } catch (error) {
@@ -507,7 +657,18 @@ const loadStateFromStorage = () => {
 
 const saveStateToStorage = (state) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    // Strip sourceFile.content before persisting — file content is transient (in-memory only)
+    // and can cause localStorage quota errors for large files.
+    const stateToSave = {
+      ...state,
+      setup: {
+        ...state.setup,
+        sourceFile: state.setup.sourceFile
+          ? { ...state.setup.sourceFile, content: null }
+          : null,
+      },
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
   } catch (error) {
     console.warn("Failed to save state to localStorage:", error);
   }
@@ -525,18 +686,61 @@ const clearStoredState = () => {
 function reducer(state, action) {
   switch (action.type) {
     // Setup actions
-    case "SET_FLOW_TYPE": {
-      const defaultTemplate =
-        WORKFLOW_TEMPLATES.find(
-          (template) => template.flowType === action.payload,
-        )?.id || null;
+    case "SET_PROJECT_NAME":
+      return {
+        ...state,
+        setup: { ...state.setup, projectName: action.payload },
+      };
+
+    case "SET_AGENT_BRIDGE_CONTEXT": {
+      const p = action.payload || {};
+      const patch = {};
+      if (
+        Object.prototype.hasOwnProperty.call(p, "targetWorkspace") &&
+        typeof p.targetWorkspace === "string"
+      ) {
+        patch.targetWorkspace = p.targetWorkspace;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(p, "agentBridgeBaseUrl") &&
+        typeof p.agentBridgeBaseUrl === "string"
+      ) {
+        patch.agentBridgeBaseUrl = p.agentBridgeBaseUrl;
+      }
       return {
         ...state,
         setup: {
           ...state.setup,
-          flowType: action.payload,
-          selectedTemplateId: defaultTemplate,
+          ...patch,
+        },
+      };
+    }
+
+    case "SET_FLOW_TYPE": {
+      const flowOption = PROJECT_FLOW_OPTIONS.find(o => o.id === action.payload);
+      const isCustom = action.payload === PROJECT_FLOW.CUSTOM;
+      
+      return {
+        ...state,
+        setup: {
+          ...state.setup,
+          projectFlow: action.payload,
+          flowType: flowOption?.flowType || FLOW_TYPE.WITHOUT_MIGRATION,
+          kickoffSource: flowOption?.kickoffSource || "custom_flow",
           completedSteps: [SETUP_STEPS.FLOW_SELECTION],
+          currentStep: isCustom ? SETUP_STEPS.AGENT_SELECTION : SETUP_STEPS.LANGUAGE_CONFIG,
+          selectedAgentIds: isCustom ? state.setup.selectedAgentIds : [],
+        },
+      };
+    }
+
+    case "SET_CUSTOM_AGENTS": {
+      return {
+        ...state,
+        setup: {
+          ...state.setup,
+          selectedAgentIds: action.payload,
+          completedSteps: [...new Set([...state.setup.completedSteps, SETUP_STEPS.AGENT_SELECTION])],
           currentStep: SETUP_STEPS.LANGUAGE_CONFIG,
         },
       };
@@ -545,6 +749,7 @@ function reducer(state, action) {
     case "RESET_SETUP_FROM_STEP": {
       const stepOrder = [
         SETUP_STEPS.FLOW_SELECTION,
+        SETUP_STEPS.AGENT_SELECTION,
         SETUP_STEPS.LANGUAGE_CONFIG,
         SETUP_STEPS.IDE_CONFIG,
         SETUP_STEPS.REVIEW,
@@ -559,18 +764,28 @@ function reducer(state, action) {
           ...state.setup,
           currentStep: action.payload,
           completedSteps: newCompleted,
-          ...(fromIdx <= 0 ? { flowType: null } : {}),
-          ...(fromIdx <= 0 ? { selectedTemplateId: null } : {}),
-          ...(fromIdx <= 1
+          ...(fromIdx <= 0
+            ? {
+                projectFlow: null,
+                flowType: null,
+                kickoffSource: "custom_flow",
+                projectName: "",
+                targetWorkspace: "",
+                agentBridgeBaseUrl: "",
+              }
+            : {}),
+          ...(fromIdx <= 1 ? { selectedAgentIds: [] } : {}),
+          ...(fromIdx <= 2
             ? { sourceLanguage: null, targetLanguage: null, sourceFile: null }
             : {}),
-          ...(fromIdx <= 2
+          ...(fromIdx <= 3
             ? {
                 ideConfig: {
                   platform: null,
                   llm: null,
                   cloudDeployment: null,
                   mcpServers: [],
+                  cliExecutablePath: "",
                 },
               }
             : {}),
@@ -609,6 +824,30 @@ function reducer(state, action) {
         },
       };
 
+    case "SET_KICKOFF_SOURCE": {
+      const nextSetup = {
+        ...state.setup,
+        kickoffSource: action.payload,
+        sourceFile: null,
+      };
+
+      if (!state.setup.setupComplete) {
+        return { ...state, setup: nextSetup };
+      }
+
+      return {
+        ...state,
+        setup: nextSetup,
+        workflow: {
+          ...initialWorkflowState,
+          agents: buildAgents(state.setup),
+        },
+        dashboardPanel: "workflow",
+        dashboardConfigFocus: null,
+        selectedAgentId: null,
+      };
+    }
+
     case "SET_IDE_CONFIG":
       return {
         ...state,
@@ -622,7 +861,28 @@ function reducer(state, action) {
         },
       };
 
-    case "COMPLETE_SETUP":
+    case "COMPLETE_SETUP": {
+      const projectId = state.activeProjectId || `proj_${Date.now()}`;
+      const projectSnapshot = {
+        id: projectId,
+        name: state.setup.projectName || "Untitled Project",
+        projectFlow: state.setup.projectFlow,
+        flowType: state.setup.flowType,
+        kickoffSource: state.setup.kickoffSource,
+        sourceLanguage: state.setup.sourceLanguage,
+        targetLanguage: state.setup.targetLanguage,
+        selectedAgentIds: state.setup.selectedAgentIds,
+        targetWorkspace: state.setup.targetWorkspace,
+        agentBridgeBaseUrl: state.setup.agentBridgeBaseUrl,
+        ideConfig: state.setup.ideConfig,
+        selectedTemplateId: state.setup.selectedTemplateId,
+        createdAt: new Date().toISOString(),
+      };
+      const existingIdx = state.projects.findIndex((p) => p.id === projectId);
+      const updatedProjects =
+        existingIdx >= 0
+          ? state.projects.map((p) => (p.id === projectId ? projectSnapshot : p))
+          : [...state.projects, projectSnapshot];
       return {
         ...state,
         setup: {
@@ -634,15 +894,15 @@ function reducer(state, action) {
         },
         workflow: {
           ...initialWorkflowState,
-          agents: buildAgents(
-            state.setup.selectedTemplateId,
-            state.setup.flowType,
-          ),
+          agents: buildAgents(state.setup),
         },
+        projects: updatedProjects,
+        activeProjectId: projectId,
         view: "dashboard",
         dashboardPanel: "workflow",
         dashboardConfigFocus: null,
       };
+    }
 
     case "SET_WORKFLOW_TEMPLATE": {
       const selectedTemplate = WORKFLOW_TEMPLATES.find(
@@ -667,7 +927,7 @@ function reducer(state, action) {
         setup: nextSetup,
         workflow: {
           ...initialWorkflowState,
-          agents: buildAgents(action.payload, nextFlowType),
+          agents: buildAgents({ ...state.setup, selectedTemplateId: action.payload, flowType: nextFlowType }),
         },
         view: "dashboard",
         dashboardPanel: "workflow",
@@ -676,9 +936,78 @@ function reducer(state, action) {
       };
     }
 
+    case "SWITCH_PROJECT": {
+      const proj = state.projects.find((p) => p.id === action.payload);
+      if (!proj) return state;
+      const restoredSetup = {
+        ...initialSetupState,
+        projectName: proj.name,
+        projectFlow: proj.projectFlow,
+        flowType: proj.flowType,
+        kickoffSource: proj.kickoffSource,
+        sourceLanguage: proj.sourceLanguage,
+        targetLanguage: proj.targetLanguage,
+        selectedAgentIds: proj.selectedAgentIds || [],
+        targetWorkspace: proj.targetWorkspace ?? "",
+        agentBridgeBaseUrl: proj.agentBridgeBaseUrl ?? "",
+        ideConfig: {
+          ...initialSetupState.ideConfig,
+          ...(proj.ideConfig && typeof proj.ideConfig === "object" ? proj.ideConfig : {}),
+        },
+        selectedTemplateId: proj.selectedTemplateId,
+        setupComplete: true,
+        completedSteps: [
+          SETUP_STEPS.FLOW_SELECTION,
+          SETUP_STEPS.LANGUAGE_CONFIG,
+          SETUP_STEPS.IDE_CONFIG,
+          SETUP_STEPS.REVIEW,
+        ],
+      };
+      return {
+        ...state,
+        setup: restoredSetup,
+        workflow: {
+          ...initialWorkflowState,
+          agents: buildAgents(restoredSetup),
+        },
+        activeProjectId: proj.id,
+        view: "dashboard",
+        dashboardPanel: "workflow",
+        dashboardConfigFocus: null,
+        selectedAgentId: null,
+      };
+    }
+
+    case "NEW_PROJECT":
+      return {
+        ...state,
+        setup: initialSetupState,
+        workflow: initialWorkflowState,
+        activeProjectId: null,
+        view: "setup",
+        dashboardPanel: "workflow",
+        dashboardConfigFocus: null,
+        selectedAgentId: null,
+      };
+
     // Workflow actions
     case "START_AGENT": {
       const agentId = action.payload;
+      const agentIndex = state.workflow.agents.findIndex(
+        (a) => a.id === agentId,
+      );
+      if (agentIndex === -1) return state;
+      const agent = state.workflow.agents[agentIndex];
+      if (agent.status === AGENT_STATUS.RUNNING) return state;
+      if (
+        agentIndex > 0 &&
+        agent.status !== AGENT_STATUS.COMPLETED &&
+        agent.status !== AGENT_STATUS.FAILED &&
+        state.workflow.agents[agentIndex - 1].status !== AGENT_STATUS.COMPLETED
+      ) {
+        return state;
+      }
+
       const newAgents = state.workflow.agents.map((a) =>
         a.id === agentId
           ? {
@@ -694,7 +1023,7 @@ function reducer(state, action) {
           ...state.workflow,
           agents: newAgents,
           activeAgentId: agentId,
-          workflowStatus: "running",
+          workflowStatus: deriveWorkflowStatus(newAgents),
         },
       };
     }
@@ -713,6 +1042,7 @@ function reducer(state, action) {
             state.workflow.activeAgentId === agentId
               ? null
               : state.workflow.activeAgentId,
+          workflowStatus: deriveWorkflowStatus(newAgents),
         },
       };
     }
@@ -726,15 +1056,71 @@ function reducer(state, action) {
     }
 
     case "COMPLETE_AGENT": {
-      const agentId = action.payload;
+      const payload =
+        typeof action.payload === "object" && action.payload !== null
+          ? action.payload
+          : { id: action.payload, output: null };
+      const {
+        id: agentId,
+        output,
+        jiraSpecCreatorStep,
+      } = payload;
+      const jiraPatch =
+        jiraSpecCreatorStep === "draft"
+          ? { jiraSpecAwaitingPublish: true, jiraSpecPublishDone: false }
+          : jiraSpecCreatorStep === "publish"
+            ? { jiraSpecAwaitingPublish: false, jiraSpecPublishDone: true }
+            : {};
       const newAgents = state.workflow.agents.map((a) =>
         a.id === agentId
-          ? { ...a, status: AGENT_STATUS.COMPLETED, progress: 100 }
+          ? {
+              ...a,
+              status: AGENT_STATUS.COMPLETED,
+              progress: 100,
+              output: output ?? a.output,
+              ...jiraPatch,
+            }
           : a,
       );
       return {
         ...state,
-        workflow: { ...state.workflow, agents: newAgents, activeAgentId: null },
+        workflow: {
+          ...state.workflow,
+          agents: newAgents,
+          activeAgentId: null,
+          workflowStatus: deriveWorkflowStatus(newAgents),
+        },
+      };
+    }
+
+    case "FAIL_AGENT": {
+      const { id: agentId, output } = typeof action.payload === "object"
+        ? action.payload
+        : { id: action.payload, output: null };
+      const newAgents = state.workflow.agents.map((a) =>
+        a.id === agentId
+          ? { ...a, status: AGENT_STATUS.FAILED, progress: 0, output: output ?? a.output }
+          : a,
+      );
+      return {
+        ...state,
+        workflow: {
+          ...state.workflow,
+          agents: newAgents,
+          activeAgentId: null,
+          workflowStatus: deriveWorkflowStatus(newAgents),
+        },
+      };
+    }
+
+    case "DISMISS_AGENT_WAITING": {
+      const agentId = action.payload;
+      const newAgents = state.workflow.agents.map((a) =>
+        a.id === agentId ? { ...a, dismissedWaiting: true } : a,
+      );
+      return {
+        ...state,
+        workflow: { ...state.workflow, agents: newAgents },
       };
     }
 
@@ -750,7 +1136,14 @@ function reducer(state, action) {
             }
           : a,
       );
-      return { ...state, workflow: { ...state.workflow, agents: newAgents } };
+      return {
+        ...state,
+        workflow: {
+          ...state.workflow,
+          agents: newAgents,
+          workflowStatus: deriveWorkflowStatus(newAgents),
+        },
+      };
     }
 
     case "RESET_AGENT": {
@@ -763,8 +1156,12 @@ function reducer(state, action) {
               ...a,
               status: AGENT_STATUS.IDLE,
               progress: 0,
+              output: undefined,
+              dismissedWaiting: false,
               htlpStatus: a.htlpRequired ? "pending" : undefined,
               logs: [],
+              jiraSpecAwaitingPublish: false,
+              jiraSpecPublishDone: false,
             }
           : a,
       );
@@ -777,6 +1174,7 @@ function reducer(state, action) {
             state.workflow.activeAgentId === agentId
               ? null
               : state.workflow.activeAgentId,
+          workflowStatus: deriveWorkflowStatus(newAgents),
         },
       };
     }
@@ -847,10 +1245,46 @@ function reducer(state, action) {
         dashboardConfigFocus: null,
       };
 
+    case "OPEN_DASHBOARD_SETTINGS":
+      return {
+        ...state,
+        view: "dashboard",
+        dashboardPanel: "settings",
+        dashboardConfigFocus: null,
+        selectedAgentId: null,
+      };
+
+    case "SET_THEME": {
+      return {
+        ...state,
+        theme: action.payload,
+      };
+    }
+    case "TOGGLE_THEME": {
+      return {
+        ...state,
+        theme: state.theme === "dark" ? "light" : "dark",
+      };
+    }
     default:
       return state;
   }
 }
+
+// ─── Theme Helpers ─────────────────────────────────────────────────────────────
+const themeMap = {
+  dark: darkTheme,
+  light: lightTheme,
+};
+
+const applyTheme = (theme) => {
+  if (typeof document === "undefined") return;
+  const themeVariables = themeMap[theme] || darkTheme;
+  const root = document.documentElement;
+  Object.entries(themeVariables).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+};
 
 // ─── Context ───────────────────────────────────────────────────────────────────
 const AppContext = createContext(null);
@@ -858,12 +1292,21 @@ const AppContext = createContext(null);
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, loadStateFromStorage());
 
-  // Save state to localStorage whenever it changes
+  // Apply theme and save state to localStorage whenever it changes
   useEffect(() => {
+    applyTheme(state.theme);
     saveStateToStorage(state);
   }, [state]);
 
   const actions = {
+    setProjectName: useCallback(
+      (name) => dispatch({ type: "SET_PROJECT_NAME", payload: name }),
+      [],
+    ),
+    setAgentBridgeContext: useCallback(
+      (payload) => dispatch({ type: "SET_AGENT_BRIDGE_CONTEXT", payload }),
+      [],
+    ),
     setFlowType: useCallback(
       (type) => dispatch({ type: "SET_FLOW_TYPE", payload: type }),
       [],
@@ -883,6 +1326,14 @@ export function AppProvider({ children }) {
     ),
     setSourceFile: useCallback(
       (fileMeta) => dispatch({ type: "SET_SOURCE_FILE", payload: fileMeta }),
+      [],
+    ),
+    setKickoffSource: useCallback(
+      (source) => dispatch({ type: "SET_KICKOFF_SOURCE", payload: source }),
+      [],
+    ),
+    setCustomAgents: useCallback(
+      (agentIds) => dispatch({ type: "SET_CUSTOM_AGENTS", payload: agentIds }),
       [],
     ),
     setIdeConfig: useCallback(
@@ -907,7 +1358,16 @@ export function AppProvider({ children }) {
       [],
     ),
     completeAgent: useCallback(
-      (id) => dispatch({ type: "COMPLETE_AGENT", payload: id }),
+      (id, output = null, extra = {}) =>
+        dispatch({ type: "COMPLETE_AGENT", payload: { id, output, ...extra } }),
+      [],
+    ),
+    failAgent: useCallback(
+      (id, output = null) => dispatch({ type: "FAIL_AGENT", payload: { id, output } }),
+      [],
+    ),
+    dismissAgentWaiting: useCallback(
+      (id) => dispatch({ type: "DISMISS_AGENT_WAITING", payload: id }),
       [],
     ),
     setHtlpStatus: useCallback(
@@ -933,6 +1393,11 @@ export function AppProvider({ children }) {
       [],
     ),
     backToSetup: useCallback(() => dispatch({ type: "BACK_TO_SETUP" }), []),
+    switchProject: useCallback(
+      (projectId) => dispatch({ type: "SWITCH_PROJECT", payload: projectId }),
+      [],
+    ),
+    newProject: useCallback(() => dispatch({ type: "NEW_PROJECT" }), []),
     openDashboardConfig: useCallback(
       (step, focus) =>
         dispatch({ type: "OPEN_DASHBOARD_CONFIG", payload: { step, focus } }),
@@ -942,10 +1407,15 @@ export function AppProvider({ children }) {
       () => dispatch({ type: "CLOSE_DASHBOARD_CONFIG" }),
       [],
     ),
+    openDashboardSettings: useCallback(
+      () => dispatch({ type: "OPEN_DASHBOARD_SETTINGS" }),
+      [],
+    ),
     clearStoredState: useCallback(() => {
       clearStoredState();
       window.location.reload(); // Force a reload to reset to initial state
     }, []),
+    toggleTheme: useCallback(() => dispatch({ type: "TOGGLE_THEME" }), []),
   };
 
   return (

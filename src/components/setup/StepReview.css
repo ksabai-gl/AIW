@@ -59,6 +59,13 @@
   color: var(--info);
 }
 
+.review-val-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
 .review-info-card {
   margin: 0 32px 32px;
   padding: 20px;

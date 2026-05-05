@@ -1,0 +1,4 @@
+{
+  "_readme": "Copy to kiro-agent.config.json ONLY if `kiro` is not on PATH. Set kiroBin to the REAL path from: where.exe kiro — do not leave the placeholder.",
+  "kiroBin": "C:\\\\path\\\\to\\\\kiro.exe"
+}

@@ -1,65 +1,73 @@
-import { useEffect } from "react";
-import { AppProvider, useAppStore, AGENT_STATUS } from "./store/useAppStore";
+import { useEffect, useCallback } from "react";
+import { AppProvider, useAppStore } from "./store/useAppStore";
 import SetupWizard from "./components/SetupWizard";
 import Dashboard from "./components/Dashboard";
 import "./App.css";
 
+// ─── Hash routing helpers ─────────────────────────────────────────────────────
+function getHashForView(view, agentId) {
+  if (view === "setup") return "#/setup";
+  if (view === "agent_detail" && agentId) return `#/agent/${agentId}`;
+  return "#/dashboard";
+}
+
+function getViewFromHash(hash) {
+  if (!hash || hash === "#" || hash === "#/") return null;
+  if (hash.startsWith("#/agent/")) {
+    const agentId = hash.slice("#/agent/".length);
+    return { view: "agent_detail", agentId: agentId || null };
+  }
+  if (hash === "#/setup") return { view: "setup", agentId: null };
+  if (hash.startsWith("#/dashboard")) return { view: "dashboard", agentId: null };
+  return null;
+}
+
 function AppContent() {
   const { state, actions } = useAppStore();
   const { view, workflow } = state;
+  const selectedAgentId = state.selectedAgentId;
 
-  // Simulation logic for agents
+  // ── Sync state.view → URL hash ─────────────────────────────────────────────
   useEffect(() => {
-    if (workflow.workflowStatus === "running" && workflow.activeAgentId) {
-      const activeAgent = workflow.agents.find(
-        (a) => a.id === workflow.activeAgentId,
-      );
-
-      if (activeAgent && activeAgent.status === AGENT_STATUS.RUNNING) {
-        const interval = setInterval(() => {
-          const nextProgress =
-            activeAgent.progress + Math.floor(Math.random() * 15) + 5;
-
-          if (nextProgress >= 100) {
-            clearInterval(interval);
-            actions.completeAgent(activeAgent.id);
-            actions.addLog({
-              timestamp: new Date().toLocaleTimeString(),
-              agent: activeAgent.shortName,
-              message: `Successfully completed all tasks. Artifacts generated.`,
-              type: "success",
-            });
-            // NO AUTO START OF NEXT AGENT
-          } else {
-            actions.updateAgentProgress(activeAgent.id, nextProgress);
-
-            // Random logs
-            if (Math.random() > 0.8) {
-              const messages = [
-                "Parsing source files...",
-                "Analyzing dependency graph...",
-                "Applying transformation rules...",
-                "Validating syntax tree...",
-              ];
-              actions.addLog({
-                timestamp: new Date().toLocaleTimeString(),
-                agent: activeAgent.shortName,
-                message: messages[Math.floor(Math.random() * messages.length)],
-                type: "info",
-              });
-            }
-          }
-        }, 2000);
-
-        return () => clearInterval(interval);
-      }
+    const targetHash = getHashForView(view, selectedAgentId);
+    if (globalThis.location.hash !== targetHash) {
+      globalThis.history.pushState({ view, agentId: selectedAgentId }, "", targetHash);
     }
-  }, [
-    workflow.workflowStatus,
-    workflow.activeAgentId,
-    workflow.agents,
-    actions,
-  ]);
+  }, [view, selectedAgentId]);
+
+  // ── Sync URL hash → state.view (browser back / forward) ───────────────────
+  const handlePopState = useCallback(() => {
+    const parsed = getViewFromHash(globalThis.location.hash);
+    if (!parsed) return;
+    if (parsed.view === "setup") {
+      actions.backToSetup();
+    } else if (parsed.view === "agent_detail" && parsed.agentId) {
+      actions.setView("agent_detail", parsed.agentId);
+    } else {
+      actions.setView("dashboard", null);
+    }
+  }, [actions]);
+
+  useEffect(() => {
+    globalThis.addEventListener("popstate", handlePopState);
+    return () => globalThis.removeEventListener("popstate", handlePopState);
+  }, [handlePopState]);
+
+  // ── On first load, honour hash if present ─────────────────────────────────
+  useEffect(() => {
+    const parsed = getViewFromHash(globalThis.location.hash);
+    if (parsed && parsed.view !== view) {
+      if (parsed.view === "setup") actions.backToSetup();
+      else if (parsed.view === "agent_detail" && parsed.agentId)
+        actions.setView("agent_detail", parsed.agentId);
+      else if (parsed.view === "dashboard") actions.setView("dashboard", null);
+    }
+    // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Simulation logic removed — agent status is managed by useAgentExecution
+  // based on real API responses only.
 
   return (
     <div className="app-shell">

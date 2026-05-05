@@ -1,0 +1,49 @@
+{
+  "mcpServers": {
+    "jira": {
+      "command": "npx",
+      "args": ["-y", "@aashari/mcp-server-atlassian-jira"],
+      "env": {
+        "ATLASSIAN_SITE_NAME": "${ATLASSIAN_SITE_NAME}",
+        "ATLASSIAN_USER_EMAIL": "${ATLASSIAN_USER_EMAIL}",
+        "ATLASSIAN_API_TOKEN": "${ATLASSIAN_API_TOKEN}"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "jira_get",
+        "jira_post",
+        "jira_put",
+        "jira_patch",
+        "jira_delete"
+      ]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PERSONAL_ACCESS_TOKEN}"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "create_or_update_file",
+        "push_files",
+        "create_pull_request",
+        "create_branch",
+        "get_file_contents",
+        "list_commits",
+        "get_pull_request",
+        "list_pull_requests",
+        "merge_pull_request"
+      ],
+      "disabledTools": [
+        "create_repository",
+        "create_issue",
+        "fork_repository",
+        "list_issues",
+        "update_issue",
+        "add_issue_comment",
+        "search_issues"
+      ]
+    }
+  }
+}

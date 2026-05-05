@@ -1,0 +1,2 @@
+# This directory stores pipeline run artifacts
+# Each run creates a subdirectory with Run_ID format: YYYY-MM-DDTHH-MM-SS_random

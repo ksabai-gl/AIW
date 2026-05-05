@@ -1,0 +1,88 @@
+{
+  "pipeline": {
+    "agents": [
+      {
+        "name": "progress-code-analyser-agent",
+        "step": 1,
+        "outputFile": "01-progress-analysis.md",
+        "description": "Analyze Progress 4GL code",
+        "requiredSections": ["Dependencies", "Data Structures", "Procedural Logic"]
+      },
+      {
+        "name": "design-doc-agent",
+        "step": 2,
+        "outputFile": "02-design-document.md",
+        "description": "Generate design documentation",
+        "requiredSections": ["Executive Summary", "System Architecture", "Data Model"],
+        "requiresMermaid": true
+      },
+      {
+        "name": "task-list-agent",
+        "step": 3,
+        "outputFile": "03-task-list.md",
+        "description": "Create migration task list",
+        "requiredSections": ["Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5"]
+      },
+      {
+        "name": "jira-ticket-creator-agent",
+        "step": 4,
+        "outputFile": "04-jira-tickets.md",
+        "description": "Create Jira tickets",
+        "requiresJiraIds": true
+      },
+      {
+        "name": "p4gl-to-ts-transform-agent",
+        "step": 5,
+        "outputFile": "05-transformation-summary.md",
+        "description": "Transform to TypeScript",
+        "validateTypescript": true
+      },
+      {
+        "name": "test-generation-agent",
+        "step": 6,
+        "outputFile": "06-test-generation.md",
+        "description": "Generate Jest tests",
+        "validateJestStructure": true
+      },
+      {
+        "name": "pr-creator-agent",
+        "step": 7,
+        "outputFile": "07-pull-request.md",
+        "description": "Create pull request",
+        "requiresPrUrl": true
+      }
+    ]
+  },
+  "execution": {
+    "timeoutPerAgent": 300000,
+    "maxRetryAttempts": 3,
+    "retryBackoff": {
+      "initial": 5000,
+      "multiplier": 3,
+      "max": 45000
+    }
+  },
+  "storage": {
+    "outputDirectory": ".kiro/orchestration",
+    "retentionDays": 30
+  },
+  "validation": {
+    "strictMode": true,
+    "validateMarkdown": true,
+    "validateSections": true
+  },
+  "logging": {
+    "progressLog": true,
+    "debugLog": true,
+    "consoleOutput": true
+  },
+  "contextEnrichment": {
+    "step1": ["source_file"],
+    "step2": ["source_file", "01-progress-analysis.md"],
+    "step3": ["source_file", "01-progress-analysis.md", "02-design-document.md"],
+    "step4": ["01-progress-analysis.md", "02-design-document.md", "03-task-list.md"],
+    "step5": ["01-progress-analysis.md", "02-design-document.md", "03-task-list.md", "04-jira-tickets.md"],
+    "step6": ["02-design-document.md", "05-transformation-summary.md"],
+    "step7": ["02-design-document.md", "03-task-list.md", "04-jira-tickets.md", "05-transformation-summary.md", "06-test-generation.md"]
+  }
+}

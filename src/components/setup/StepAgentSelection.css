@@ -1,0 +1,132 @@
+.step-agent-selection {
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.custom-setup-section {
+  margin-bottom: 2.5rem;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  opacity: 0.9;
+}
+
+.input-source-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
+}
+
+.source-option-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.source-option-btn:hover {
+  border-color: var(--gl-orange);
+  color: var(--text-primary);
+}
+
+.source-option-btn.selected {
+  background: var(--gl-orange);
+  border-color: var(--gl-orange);
+  color: white;
+}
+
+.agent-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.agent-select-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bg-card-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.agent-select-card:hover {
+  border-color: var(--gl-orange);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+}
+
+.agent-select-card.selected {
+  border-color: var(--gl-orange);
+  background: rgba(255, 107, 0, 0.05);
+}
+
+.agent-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.agent-select-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+.agent-check {
+  width: 20px;
+  height: 20px;
+  background: var(--gl-orange);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+.agent-select-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.agent-select-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin: 0;
+  flex-grow: 1;
+}
+
+.agent-htlp-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+  border-radius: 4px;
+  align-self: flex-start;
+  font-weight: 500;
+}

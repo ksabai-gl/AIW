@@ -5,12 +5,24 @@ export default function ExecutionLog() {
   const { state, actions } = useAppStore();
   const { executionLogs, autoRefresh } = state.workflow;
 
+  const getLogTypeLabel = (type) => {
+    const labels = {
+      info: "ℹ️",
+      success: "✅",
+      error: "❌",
+      output: "📤",
+      warning: "⚠️",
+    };
+    return labels[type] || "📝";
+  };
+
   return (
     <div className="execution-log">
       <div className="log-header">
         <div className="log-header-left">
           <span className="log-icon">🖥️</span>
           <h5 className="log-title">Execution Log</h5>
+          <span className="log-count">({executionLogs.length})</span>
         </div>
         <div className="log-header-right">
           <div className="auto-refresh">
@@ -33,8 +45,12 @@ export default function ExecutionLog() {
           </div>
         ) : (
           <div className="log-lines">
-            {executionLogs.map((log, i) => (
-              <div key={i} className={`log-line ${log.type}`}>
+            {executionLogs.map((log) => (
+              <div
+                key={`${log.timestamp}-${log.agent}-${log.message}`}
+                className={`log-line ${log.type || "info"}`}
+              >
+                <span className="log-type-icon">{getLogTypeLabel(log.type)}</span>
                 <span className="log-time">[{log.timestamp}]</span>
                 <span className="log-agent">{log.agent}:</span>
                 <span className="log-msg">{log.message}</span>
@@ -48,20 +64,20 @@ export default function ExecutionLog() {
         <div className="legend-title">Legend</div>
         <div className="legend-items">
           <div className="legend-item">
-            <span className="dot dashed info"></span>
-            <span>Input / Output</span>
+            <span className="dot info"></span>
+            <span>Info</span>
           </div>
           <div className="legend-item">
-            <span className="dot solid primary"></span>
-            <span>Sequential Flow</span>
+            <span className="dot success"></span>
+            <span>Success</span>
           </div>
           <div className="legend-item">
-            <span className="dot dotted secondary"></span>
-            <span>Conditional Flow</span>
+            <span className="dot error"></span>
+            <span>Error</span>
           </div>
           <div className="legend-item">
-            <span className="dot solid blue"></span>
-            <span>Data Flow</span>
+            <span className="dot output"></span>
+            <span>Output</span>
           </div>
         </div>
       </div>

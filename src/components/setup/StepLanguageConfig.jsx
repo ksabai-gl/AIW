@@ -1,12 +1,49 @@
-import { useState, useEffect } from "react";
-import { useAppStore, FLOW_TYPE } from "../../store/useAppStore";
-import { LANGUAGES } from "../../data/options";
+import { useState } from "react";
+import { useAppStore, FLOW_TYPE, PROJECT_FLOW } from "../../store/useAppStore";
+import { LANGUAGES, PROJECT_FLOW_OPTIONS } from "../../data/options";
 import "./StepLanguageConfig.css";
 
-export default function StepLanguageConfig() {
+const FLOW_LANGUAGE_CONFIG = {
+  jira_spec: {
+    sourceLabel: "Target Language",
+    sourceHint: "Language for generated code output",
+    showTarget: false,
+    stepDesc: "Choose the language for code generation output from the JIRA specification.",
+  },
+  design_spec: {
+    sourceLabel: "Target Language",
+    sourceHint: "Language for generated code output",
+    showTarget: false,
+    stepDesc: "Choose the language for code generation output from the design specification.",
+  },
+  code_with_migration: {
+    sourceLabel: "Source Language (Legacy)",
+    sourceHint: "The existing legacy codebase language",
+    targetLabel: "Target Language (Modern)",
+    targetHint: "The modern language to migrate to",
+    showTarget: true,
+    stepDesc: "Specify the legacy source language and the modern target language for migration.",
+  },
+  code_without_migration: {
+    sourceLabel: "Source Language",
+    sourceHint: "Primary language for analysis and code generation",
+    showTarget: false,
+    stepDesc: "Specify the primary language for analysis and code generation.",
+  },
+  custom: {
+    sourceLabel: "Source Language",
+    sourceHint: "Primary language for your pipeline",
+    showTarget: false,
+    stepDesc: "Specify the primary language for your custom pipeline.",
+  },
+};
+
+export default function StepLanguageConfig({ hideStepBadge = false }) {
   const { state, actions } = useAppStore();
   const {
+    projectFlow,
     flowType,
+    kickoffSource,
     sourceLanguage: savedSrc,
     targetLanguage: savedTgt,
   } = state.setup;
@@ -14,8 +51,17 @@ export default function StepLanguageConfig() {
   const [sourceLanguage, setSourceLanguage] = useState(savedSrc || "");
   const [targetLanguage, setTargetLanguage] = useState(savedTgt || "");
 
-  const isMigration = flowType === FLOW_TYPE.WITH_MIGRATION;
-  const isValid = sourceLanguage && (!isMigration || targetLanguage);
+  const isCustom = projectFlow === PROJECT_FLOW.CUSTOM;
+  const stepNum = isCustom ? 3 : 2;
+
+  const isMigration =
+    flowType === FLOW_TYPE.WITH_MIGRATION || kickoffSource === "modernization";
+
+  const flowConfig = FLOW_LANGUAGE_CONFIG[projectFlow] || FLOW_LANGUAGE_CONFIG.custom;
+  const showTarget = flowConfig.showTarget || isMigration;
+  const isValid = sourceLanguage && (!showTarget || targetLanguage);
+
+  const selectedFlowOption = PROJECT_FLOW_OPTIONS.find((o) => o.id === projectFlow);
 
   const handleNext = () => {
     if (isValid) {
@@ -26,18 +72,19 @@ export default function StepLanguageConfig() {
   return (
     <div className="step-language-config animate-fade-in">
       <div className="step-section-header">
-        <div className="step-section-num">Step 2</div>
-        <h2 className="step-section-title">Configure Languages</h2>
-        <p className="step-section-desc">
-          {isMigration
-            ? "Specify the source legacy language and the target modern language for migration."
-            : "Specify the primary language for analysis and code generation."}
-        </p>
+        {!hideStepBadge && <div className="step-section-num">Step {stepNum}</div>}
+        <h2 className="step-section-title">
+          {selectedFlowOption?.nextStepLabel || "Configure Languages"}
+        </h2>
+        <p className="step-section-desc">{flowConfig.stepDesc}</p>
       </div>
 
       <div className="language-selection-container">
         <div className="language-block">
-          <label className="input-label">Source Language</label>
+          <label className="input-label">{flowConfig.sourceLabel}</label>
+          {flowConfig.sourceHint && (
+            <p className="language-hint">{flowConfig.sourceHint}</p>
+          )}
           <div className="language-grid">
             {LANGUAGES.map((lang) => (
               <button
@@ -52,16 +99,21 @@ export default function StepLanguageConfig() {
           </div>
         </div>
 
-        {isMigration && (
+        {showTarget && (
           <div className="language-connector">
             <div className="connector-line"></div>
             <div className="connector-arrow">➔</div>
           </div>
         )}
 
-        {isMigration && (
+        {showTarget && (
           <div className="language-block">
-            <label className="input-label">Target Language</label>
+            <label className="input-label">
+              {flowConfig.targetLabel || "Target Language"}
+            </label>
+            {flowConfig.targetHint && (
+              <p className="language-hint">{flowConfig.targetHint}</p>
+            )}
             <div className="language-grid">
               {LANGUAGES.filter((l) => l.id !== sourceLanguage).map((lang) => (
                 <button

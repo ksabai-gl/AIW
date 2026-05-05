@@ -1,29 +1,30 @@
 import "./SetupWizard.css";
-import { useAppStore, SETUP_STEPS, FLOW_TYPE } from "../store/useAppStore";
+import { useAppStore, SETUP_STEPS, PROJECT_FLOW } from "../store/useAppStore";
 import StepFlowSelection from "./setup/StepFlowSelection";
+import StepAgentSelection from "./setup/StepAgentSelection";
 import StepLanguageConfig from "./setup/StepLanguageConfig";
 import StepIdeConfig from "./setup/StepIdeConfig";
 import StepReview from "./setup/StepReview";
 import GLLogo from "./GLLogo";
 
-const STEP_META = [
-  { id: SETUP_STEPS.FLOW_SELECTION, label: "Flow Type", num: 1 },
-  { id: SETUP_STEPS.LANGUAGE_CONFIG, label: "Languages", num: 2 },
-  { id: SETUP_STEPS.IDE_CONFIG, label: "IDE & Platform", num: 3 },
-  { id: SETUP_STEPS.REVIEW, label: "Review", num: 4 },
-];
+// Moved inside component for dynamic rendering
 
 export default function SetupWizard() {
   const { state, actions } = useAppStore();
   const { setup } = state;
 
+  const isCustom = setup.projectFlow === PROJECT_FLOW.CUSTOM;
+  const stepMeta = [
+    { id: SETUP_STEPS.FLOW_SELECTION, label: "Flow Type", num: 1 },
+    ...(isCustom ? [{ id: SETUP_STEPS.AGENT_SELECTION, label: "Agents", num: 2 }] : []),
+    { id: SETUP_STEPS.LANGUAGE_CONFIG, label: "Languages", num: isCustom ? 3 : 2 },
+    { id: SETUP_STEPS.IDE_CONFIG, label: "IDE & Platform", num: isCustom ? 4 : 3 },
+    { id: SETUP_STEPS.REVIEW, label: "Review", num: isCustom ? 5 : 4 },
+  ];
+
+  const order = stepMeta.map(s => s.id);
+
   const isStepEnabled = (stepId) => {
-    const order = [
-      SETUP_STEPS.FLOW_SELECTION,
-      SETUP_STEPS.LANGUAGE_CONFIG,
-      SETUP_STEPS.IDE_CONFIG,
-      SETUP_STEPS.REVIEW,
-    ];
     const idx = order.indexOf(stepId);
     if (idx === 0) return true;
     return setup.completedSteps.includes(order[idx - 1]);
@@ -59,7 +60,7 @@ export default function SetupWizard() {
 
       {/* Progress Steps */}
       <div className="setup-progress-bar">
-        {STEP_META.map((step, idx) => {
+        {stepMeta.map((step, idx) => {
           const enabled = isStepEnabled(step.id);
           const completed = isStepCompleted(step.id);
           const active = isStepActive(step.id);
@@ -94,7 +95,7 @@ export default function SetupWizard() {
                 </div>
                 <span className="step-label">{step.label}</span>
               </button>
-              {idx < STEP_META.length - 1 && (
+              {idx < stepMeta.length - 1 && (
                 <div
                   className={`step-connector ${completed ? "filled" : ""}`}
                 />
@@ -108,6 +109,9 @@ export default function SetupWizard() {
       <div className="setup-content animate-fade-in">
         {setup.currentStep === SETUP_STEPS.FLOW_SELECTION && (
           <StepFlowSelection />
+        )}
+        {setup.currentStep === SETUP_STEPS.AGENT_SELECTION && (
+          <StepAgentSelection />
         )}
         {setup.currentStep === SETUP_STEPS.LANGUAGE_CONFIG && (
           <StepLanguageConfig />

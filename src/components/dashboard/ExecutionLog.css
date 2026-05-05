@@ -76,7 +76,7 @@
   padding: 16px 24px;
   font-family: "JetBrains Mono", monospace;
   font-size: 12px;
-  background: #090a0f;
+  background: var(--bg-log);
 }
 
 .empty-log {
@@ -103,17 +103,28 @@
 .log-line {
   display: flex;
   gap: 10px;
+  align-items: flex-start;
+}
+
+.log-type-icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  width: 12px;
 }
 
 .log-time {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 .log-agent {
   color: var(--info);
   font-weight: 700;
+  flex-shrink: 0;
 }
 .log-msg {
   color: var(--text-secondary);
+  word-break: break-word;
+  flex: 1;
 }
 
 .log-line.info .log-msg {
@@ -124,6 +135,14 @@
 }
 .log-line.error .log-msg {
   color: var(--danger);
+}
+.log-line.output .log-msg {
+  color: var(--text-secondary);
+  font-size: 11px;
+  opacity: 0.9;
+}
+.log-line.warning .log-msg {
+  color: var(--warning);
 }
 
 .log-legend {
@@ -162,31 +181,22 @@
 
 .dot {
   width: 12px;
-  height: 2px;
-}
-
-.dot.dashed {
-  border-top: 2px dashed;
-}
-.dot.solid {
-  height: 2px;
-}
-.dot.dotted {
-  border-top: 2px dotted;
+  height: 8px;
+  border-radius: 2px;
 }
 
 .dot.info {
-  color: var(--success);
-  background: var(--success);
-  border-color: var(--success);
-}
-.dot.primary {
-  background: var(--text-muted);
-}
-.dot.secondary {
-  color: var(--text-muted);
-  border-color: var(--text-muted);
-}
-.dot.blue {
   background: var(--info);
+}
+.dot.success {
+  background: var(--success);
+}
+.dot.error {
+  background: var(--danger);
+}
+.dot.output {
+  background: var(--text-secondary);
+}
+.dot.warning {
+  background: var(--warning);
 }

@@ -1,0 +1,28 @@
+{
+  "name": "cursor-agent-bridge",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,ui -c blue,magenta \"node server/index.mjs\" \"vite\"",
+    "dev:server": "node server/index.mjs",
+    "dev:ui": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "install:all": "npm install"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

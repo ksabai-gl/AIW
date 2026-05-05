@@ -1,11 +1,11 @@
-import { useAppStore, FLOW_TYPE } from "../../store/useAppStore";
+import { useAppStore, FLOW_TYPE, PROJECT_FLOW } from "../../store/useAppStore";
 import {
   LANGUAGES,
   IDE_PLATFORMS,
   LLM_OPTIONS,
   CLOUD_OPTIONS,
   MCP_OPTIONS,
-  WORKFLOW_TEMPLATES,
+  PROJECT_FLOW_OPTIONS,
 } from "../../data/options";
 import "./StepReview.css";
 
@@ -13,23 +13,25 @@ export default function StepReview() {
   const { state, actions } = useAppStore();
   const { setup } = state;
 
-  const selectedTemplate = WORKFLOW_TEMPLATES.find(
-    (template) => template.id === setup.selectedTemplateId,
-  );
-  const flowLabel =
-    selectedTemplate?.label ||
-    (setup.flowType === FLOW_TYPE.WITH_MIGRATION
-      ? "With Migration"
-      : "Without Migration");
-  const estimatedAgents =
-    selectedTemplate?.agentCount ||
-    (setup.flowType === FLOW_TYPE.WITH_MIGRATION ? 9 : 8);
+  const projectFlowOpt = PROJECT_FLOW_OPTIONS.find(o => o.id === setup.projectFlow);
+  const flowLabel = projectFlowOpt?.title || "Custom Flow";
+  
+  const estimatedAgents = setup.projectFlow === PROJECT_FLOW.CUSTOM 
+    ? setup.selectedAgentIds.length 
+    : (setup.flowType === FLOW_TYPE.WITH_MIGRATION ? 9 : 8);
+
+  const isCustom = setup.projectFlow === PROJECT_FLOW.CUSTOM;
+  const stepNum = isCustom ? 5 : 4;
   const srcLang = LANGUAGES.find((l) => l.id === setup.sourceLanguage)?.label;
   const tgtLang = LANGUAGES.find((l) => l.id === setup.targetLanguage)?.label;
   const platform = IDE_PLATFORMS.find(
     (p) => p.id === setup.ideConfig.platform,
   )?.label;
-  const llm = LLM_OPTIONS.find((l) => l.id === setup.ideConfig.llm)?.label;
+  const llmRaw = setup.ideConfig.llm;
+  const llm =
+    llmRaw === "__cli_default__"
+      ? "CLI default model"
+      : LLM_OPTIONS.find((l) => l.id === llmRaw)?.label || llmRaw;
   const cloud = CLOUD_OPTIONS.find(
     (c) => c.id === setup.ideConfig.cloudDeployment,
   )?.label;
@@ -40,7 +42,7 @@ export default function StepReview() {
   return (
     <div className="step-review animate-fade-in">
       <div className="step-section-header">
-        <div className="step-section-num">Step 4</div>
+        <div className="step-section-num">Step {stepNum}</div>
         <h2 className="step-section-title">Review Configuration</h2>
         <p className="step-section-desc">
           Double check your project settings before initializing the AI
@@ -52,6 +54,24 @@ export default function StepReview() {
         <div className="review-section">
           <div className="review-section-title">Workflow Strategy</div>
           <div className="review-grid">
+            {(setup.targetWorkspace || "").trim() !== "" && (
+              <div className="review-item">
+                <div className="review-lbl">Target workspace</div>
+                <div className="review-val review-val-mono">{(setup.targetWorkspace || "").trim()}</div>
+              </div>
+            )}
+            {(setup.agentBridgeBaseUrl || "").trim() !== "" && (
+              <div className="review-item">
+                <div className="review-lbl">Agent bridge URL</div>
+                <div className="review-val review-val-mono">{(setup.agentBridgeBaseUrl || "").trim()}</div>
+              </div>
+            )}
+            {setup.projectName && (
+              <div className="review-item">
+                <div className="review-lbl">Project Name</div>
+                <div className="review-val highlight">{setup.projectName}</div>
+              </div>
+            )}
             <div className="review-item">
               <div className="review-lbl">Flow Type</div>
               <div className="review-val highlight">{flowLabel}</div>
@@ -88,6 +108,14 @@ export default function StepReview() {
               <div className="review-lbl">MCP Integration</div>
               <div className="review-val">{mcpLabels}</div>
             </div>
+            {(setup.ideConfig.cliExecutablePath || "").trim() !== "" && (
+              <div className="review-item">
+                <div className="review-lbl">CLI executable</div>
+                <div className="review-val review-val-mono">
+                  {(setup.ideConfig.cliExecutablePath || "").trim()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

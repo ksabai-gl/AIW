@@ -1,0 +1,4 @@
+{
+  "_readme": "Copy to agent.config.json ONLY if agent is not on PATH. Set agentBin to the REAL path from: where.exe agent — do not leave the placeholder.",
+  "agentBin": "C:\\\\path\\\\to\\\\agent.exe"
+}
